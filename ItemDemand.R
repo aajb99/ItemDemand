@@ -152,8 +152,10 @@ es_model <- exp_smoothing() %>%
 ## Cross-validate to tune model
 cv_results <- modeltime_calibrate(es_model,
                                   new_data = testing(cv_split))
-
+#######################
 ## Visualize CV results
+#######################
+
 fig1 <- cv_results %>%
   modeltime_forecast(
                    new_data = testing(cv_split),
@@ -189,7 +191,7 @@ fig3 <- es_fullfit %>%
   modeltime_forecast(h = "3 months", actual_data = train) %>%
   plot_modeltime_forecast(.interactive=FALSE)
 
-###############################################################################
+################################ Other store/item combo #########################################
 # train2 <- data_train %>% filter(store==9, item==36)
 # cv_split <- time_series_split(train2, assess="3 months", cumulative = TRUE)
 # cv_split %>% 
@@ -251,3 +253,179 @@ fig3 <- es_fullfit %>%
 #   )
 # 
 # htmlwidgets::saveWidget(fig_grid, "ts_grid_plot.html")
+
+
+
+
+#########################################################################
+################## SARIMA (ARIMA) Models ################################
+#########################################################################
+
+library(forecast)
+library(modeltime)
+
+# First store item combo: #
+storeItem1 <- data_train %>%
+  filter(store==9, item==36) %>%
+  select(date, sales)
+
+# Second store item combo: #
+storeItem2 <- data_train %>%
+  filter(store==3, item==17) %>%
+  select(date, sales)
+
+rFormula <- sales ~ .
+
+arima_recipe_1 <- recipe(rFormula, data = storeItem1) %>% # set model formula and dataset
+  step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
+  step_holiday(date) %>%
+  step_range(date_doy, min = 0, max = pi) %>%
+  step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
+
+arima_recipe_2 <- recipe(rFormula, data = storeItem2) %>% # set model formula and dataset
+  step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
+  step_holiday(date) %>%
+  step_range(date_doy, min = 0, max = pi) %>%
+  step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
+
+prepped_recipe_1 <- prep(arima_recipe_1) # preprocessing new data
+baked_data_arima1 <- bake(prepped_recipe_1, new_data = storeItem1)
+
+prepped_recipe_2 <- prep(arima_recipe_2) # preprocessing new data
+baked_data_arima2 <- bake(prepped_recipe_2, new_data = storeItem2)
+
+arima_model1 <- arima_reg(seasonal_period=365,
+                         non_seasonal_ar=5, # default max p to tune
+                         non_seasonal_ma=5, # default max q to tune
+                         seasonal_ar=2, # default max P to tune
+                         seasonal_ma=2, #default max Q to tune
+                         non_seasonal_differences=2, # default max d to tune
+                         seasonal_differences=2) %>% #default max D to tune
+                         set_engine("auto_arima")
+
+cv_split_1 <- time_series_split(storeItem1, assess="3 months", cumulative = TRUE)
+cv_split_1 %>% 
+  tk_time_series_cv_plan() %>% #Put into a data frame
+  plot_time_series_cv_plan(date, sales, .interactive=FALSE)
+
+cv_split_2 <- time_series_split(storeItem2, assess="3 months", cumulative = TRUE)
+cv_split_2 %>% 
+  tk_time_series_cv_plan() %>% #Put into a data frame
+  plot_time_series_cv_plan(date, sales, .interactive=FALSE)
+
+arima_wf_1 <- workflow() %>%
+  add_recipe(arima_recipe_1) %>%
+  add_model(arima_model1) %>%
+  fit(data=training(cv_split_1))
+
+arima_wf_2 <- workflow() %>%
+  add_recipe(arima_recipe_2) %>%
+  add_model(arima_model1) %>%
+  fit(data=training(cv_split_2))
+
+cv_results_1 <- modeltime_calibrate(arima_wf_1,
+                                  new_data = testing(cv_split_1))
+
+cv_results_2 <- modeltime_calibrate(arima_wf_2,
+                                    new_data = testing(cv_split_2))
+
+train_1 <- data_train %>% filter(store==9, item==36)
+train_2 <- data_train %>% filter(store==3, item==17)
+
+##################################################
+## Visualize CV results for first store item combo
+##################################################
+
+fig1 <- cv_results_1 %>%
+  modeltime_forecast(
+    new_data = testing(cv_split_1),
+    actual_data = train_1
+  ) %>%
+  plot_modeltime_forecast(.interactive=TRUE)
+
+## Evaluate the accuracy
+cv_results_1 %>%
+  modeltime_accuracy() %>%
+  table_modeltime_accuracy(.interactive = FALSE)
+
+##################################
+# Fitting CV results to our model:
+##################################
+
+## Refit to all data then forecast
+arima_fullfit <- cv_results_1 %>%
+  modeltime_refit(data = train_1)
+
+data_test <- vroom("./data/test.csv")
+test_1 <- data_test %>% filter(store==9, item==36)
+
+arima_preds_1 <- arima_fullfit %>%
+  modeltime_forecast(h = "3 months") %>%
+  rename(date=.index, sales=.value) %>%
+  select(date, sales) %>%
+  full_join(., y=test_1, by="date") %>%
+  select(id, sales)
+
+fig3 <- arima_fullfit %>%
+  modeltime_forecast(h = "3 months", actual_data = train_1) %>%
+  plot_modeltime_forecast(.interactive=FALSE)
+
+###################################################
+## Visualize CV results for second store item combo
+###################################################
+
+fig2 <- cv_results_2 %>%
+  modeltime_forecast(
+    new_data = testing(cv_split_2),
+    actual_data = train_2
+  ) %>%
+  plot_modeltime_forecast(.interactive=TRUE)
+
+## Evaluate the accuracy
+cv_results_2 %>%
+  modeltime_accuracy() %>%
+  table_modeltime_accuracy(.interactive = FALSE)
+
+##################################
+# Fitting CV results to our model:
+##################################
+
+## Refit to all data then forecast
+arima_fullfit_2 <- cv_results_2 %>%
+  modeltime_refit(data = train_2)
+
+test_2 <- data_test %>% filter(store==3, item==17)
+
+arima_preds_2 <- arima_fullfit %>%
+  modeltime_forecast(h = "3 months") %>%
+  rename(date=.index, sales=.value) %>%
+  select(date, sales) %>%
+  full_join(., y=test_2, by="date") %>%
+  select(id, sales)
+
+fig4 <- arima_fullfit_2 %>%
+  modeltime_forecast(h = "3 months", actual_data = train_2) %>%
+  plot_modeltime_forecast(.interactive=FALSE)
+
+fig_grid_arima <- subplot(fig1, fig2, fig3, fig4, nrows = 2) %>%
+  layout(
+    title = 'Time Series Prediction: Arima Models',
+    annotations = list(
+      list(x = 0.2, y = 1, xref = 'paper', yref = 'paper', text = 'Store 9, Item 36', showarrow = FALSE),
+      list(x = 0.8, y = 1, xref = 'paper', yref = 'paper', text = 'Store 3, Item 17', showarrow = FALSE),
+      list(x = 0.2, y = 0.45, xref = 'paper', yref = 'paper', text = 'Store 9, Item 36', showarrow = FALSE),
+      list(x = 0.8, y = 0.45, xref = 'paper', yref = 'paper', text = 'Store 3, Item 17', showarrow = FALSE)
+    )
+  )
+
+# Save grid:
+# htmlwidgets::saveWidget(fig_grid_arima, "ts_arima_grid.html")
+
+
+# **** #
+# modeltime_forecast(new-data = itemTest)
+# **** #
+
+## Calibrate (i.e. tune) workflow
+## Visualize & Evaluate CV accuracy
+## Refit best model to entire data and predic
