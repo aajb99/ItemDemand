@@ -588,7 +588,7 @@ fig_grid_prophet <- subplot(fig1, fig2, fig3, fig4, nrows = 2) %>%
 
 
 # Save grid:
-htmlwidgets::saveWidget(fig_grid_arima, "ts_prophet_grid.html")
+htmlwidgets::saveWidget(fig_grid_prophet, "ts_prophet_grid.html")
 
 
 
