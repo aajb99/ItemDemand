@@ -588,7 +588,96 @@ fig_grid_prophet <- subplot(fig1, fig2, fig3, fig4, nrows = 2) %>%
 
 
 # Save grid:
-htmlwidgets::saveWidget(fig_grid_prophet, "ts_prophet_grid.html")
+# htmlwidgets::saveWidget(fig_grid_prophet, "ts_prophet_grid.html")
+
+
+
+###########################################################################
+################## Loop through all stores ################################
+###########################################################################
+
+library(forecast)
+library(modeltime)
+library(prophet)
+
+data_test <- vroom("./data/test.csv")
+
+rFormula <- sales ~ .
+
+nStores <- max(data_train$store)
+nItems <- max(data_train$item)
+
+for(s in 1:nStores){
+  for(i in 1:nItems){
+    storeItemTrain <- data_train %>%
+      filter(store==s, item==i)
+    storeItemTest <- data_test %>%
+      filter(store==s, item==i)
+
+    ## Fit storeItem models here
+    prophet_recipe <- recipe(rFormula, data = storeItemTrain) %>% # set model formula and dataset
+      step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
+      step_holiday(date) %>%
+      step_range(date_doy, min = 0, max = pi) %>%
+      step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
+    
+    prepped_recipe <- prep(prophet_recipe) # preprocessing new data
+    baked_data_prophet <- bake(prepped_recipe, new_data = storeItemTrain)
+    
+    cv_split_1 <- time_series_split(storeItemTrain, assess="3 months", cumulative = TRUE)
+    cv_split_1 %>% 
+      tk_time_series_cv_plan() %>% #Put into a data frame
+      plot_time_series_cv_plan(date, sales, .interactive=FALSE)
+    
+    prophet_model_1 <- prophet_reg() %>%
+      set_engine(engine = "prophet") %>%
+      fit(sales ~ date, data = training(cv_split_1))
+
+    cv_results_1 <- modeltime_calibrate(prophet_model_1,
+                                        new_data = testing(cv_split_1))
+    
+    ## Evaluate the accuracy
+    cv_results_1 %>%
+      modeltime_accuracy() %>%
+      table_modeltime_accuracy(.interactive = FALSE)
+    
+    
+    ##################################
+    # Fitting CV results to our model:
+    ##################################
+    
+    ## Refit to all data then forecast
+    prophet_fullfit <- cv_results_1 %>%
+      modeltime_refit(data = storeItemTrain)
+    
+    prophet_preds_1 <- prophet_fullfit %>%
+      modeltime_forecast(h = "3 months") %>%
+      rename(date=.index, sales=.value) %>%
+      select(date, sales) %>%
+      full_join(., y=storeItemTest, by="date") %>%
+      select(id, sales)
+    
+    ## Save storeItem predictions
+    if(s==1 & i==1){
+      all_preds <- prophet_preds_1
+      } 
+    else {
+      all_preds <- bind_rows(all_preds, prophet_preds_1)
+    }
+    
+  }
+}
+
+vroom_write(all_preds, "./data/ItemDemand_preds.csv", delim = ",")
+
+
+
+
+
+
+
+
+
 
 
 
