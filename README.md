@@ -1,1 +1,2 @@
 # ItemDemand
+A Kaggle Competition with a time series forecasting problem, where one must predict 3 months of sales data for 50 different items at 10 unique stores. I utilize light gradient boosting to achieve a (public) SMOTE score of 15.25841.

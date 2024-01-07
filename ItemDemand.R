@@ -453,17 +453,17 @@ storeItem2 <- data_train %>%
 
 rFormula <- sales ~ .
 
-prophet_recipe_1 <- recipe(rFormula, data = storeItem1) %>% # set model formula and dataset
-  step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
-  step_holiday(date) %>%
-  step_range(date_doy, min = 0, max = pi) %>%
-  step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
+prophet_recipe_1 <- recipe(rFormula, data = storeItem1) # %>% # set model formula and dataset
+  # step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
+  # step_holiday(date) %>%
+  # step_range(date_doy, min = 0, max = pi) %>%
+  # step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
 
-prophet_recipe_2 <- recipe(rFormula, data = storeItem2) %>% # set model formula and dataset
-  step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
-  step_holiday(date) %>%
-  step_range(date_doy, min = 0, max = pi) %>%
-  step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
+prophet_recipe_2 <- recipe(rFormula, data = storeItem2) # %>% # set model formula and dataset
+  # step_date(date, features = c('dow', 'doy', 'week', 'month', 'year', 'decimal')) %>%
+  # step_holiday(date) %>%
+  # step_range(date_doy, min = 0, max = pi) %>%
+  # step_mutate(sinDOY = sin(date_doy), cosDOY = cos(date_doy))
 
 prepped_recipe_1 <- prep(prophet_recipe_1) # preprocessing new data
 baked_data_prophet1 <- bake(prepped_recipe_1, new_data = storeItem1)
